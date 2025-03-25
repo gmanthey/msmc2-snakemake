@@ -10,3 +10,4 @@ dependencies:
   - bioconda::samtools
   - bioconda::bcftools
   - genomedk::msmc2
+  - bioconda::snakemake-executor-plugin-slurm
