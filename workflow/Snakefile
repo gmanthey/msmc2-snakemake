@@ -1,0 +1,90 @@
+def get_populations():
+    populations = {}
+    with open(config['populations_file']) as f:
+        for line in f:
+            line = line.strip().split()
+            populations[line[0]] = line[1:]
+    
+    return populations
+
+def get_chromosomes():
+    chromosomes = []
+    with open(config["chromosome_file"], 'r') as f:
+        for line in f:
+            line = line.strip()
+            chromosomes.append(line)
+
+    return chromosomes
+
+def population_list():
+    return get_populations().keys()
+
+rule all:
+    input:
+        expand("results/{pop}/{pop}.msmc2", pop=population_list())
+
+
+rule ind_depth_mask:
+    input:
+        expand("{bam_dir}/{{individual}}{bam_extension}.bam", bam_dir=config["bam_dir"], bam_extension=config["final_bam_extension"]),
+        config["reference"]
+    output:
+        "results/{population}/{chromosome}/individuals/{individual}.depth_mask.bed.gz"
+    threads: 1
+    log:
+        "logs/depth_mask/{population}/{chromosome}/{individual}.log"
+    shell:
+        """DEPTH=$(samtools depth -r SUPER_{wildcards[chromosome]} {input[0]} | awk '{sum += $3} END {print sum /NR}')
+        samtools mpileup -B -q 20 -Q 20 -g -r SUPER_{wildcards[chromosome]} -f {input[1]} {input[0]} | bcftools call -c -V indels | msmc-tools/bam_caller.py $DEPTH {output} > {log} 2>&1
+        """
+
+rule ind_vcf:
+    input:
+        config["vcf_file"]
+    output:
+        "results/{population}/{chromosome}/individuals/{individual}.vcf.gz"
+    threads: 1
+    log:
+        "logs/vcf/{population}/{chromosome}/{individual}.log"
+    shell:
+        """bcftools view -s {wildcards[individual]} --min-ac 1 -Oz -o {output} {input} SUPER_{wildcards[chromosome]}
+        bcftools index {output}
+        """
+
+def ind_vcf_mask_input(wildcards):
+    population = wildcards["population"]
+    chromosome = wildcards["chromosome"]
+    individuals = get_populations()[population]
+    vcf_files = expand("results/{population}/{chromosome}/individuals/{individual}.vcf.gz", population=population, chromosome=chromosome, individual=individuals)
+    mask_files = expand("results/{population}/{chromosome}/individuals/{individual}.depth_mask.bed.gz", population=population, chromosome=chromosome, individual=individuals)
+
+    return {"vcf": vcf_files, "mask": mask_files}
+
+rule multihetsep:
+    input:
+        unpack(ind_vcf_mask_input)
+    output:
+        "results/{population}/{chromosome}/{population}.multihetsep.txt"
+    threads: 1
+    log:
+        "logs/multihetsep/{population}/{chromosome}.log"
+    run:
+        mask_args = " ".join(["--mask " + mask for mask in input["mask"]])
+        shell("msmc-tools/generate_multihetsep.py --chr {wildcards[chromosome]} " + mask_args + " {input[vcf]} > {output} 2> {log}")
+
+def chrom_multihetsep_files(wildcards):
+    chromosomes = get_chromosomes()
+    population = wildcards["population"]
+
+    return expand("results/{population}/{chromosome}/{population}.multihetsep.txt", population=population, chromosome=chromosomes)
+
+rule msmc2:
+    input:
+        chrom_multihetsep_files
+    output:
+        "results/{population}/{population}.msmc2"
+    threads: 1
+    log:
+        "logs/msmc2/{population}.log"
+    shell:
+        "msmc2 -t 3 -r 1.5 -o {output} {input} > {log} 2>&1"

@@ -1,0 +1,12 @@
+name: msmc2-snakemake
+channels:
+  - bioconda
+  - conda-forge
+  - genomedk
+  - nodefaults
+dependencies:
+  - python
+  - bioconda::snakemake
+  - bioconda::samtools
+  - bioconda::bcftools
+  - genomedk::msmc2

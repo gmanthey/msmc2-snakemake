@@ -1,0 +1,3 @@
+[submodule "msmc-tools"]
+	path = msmc-tools
+	url = https://github.com/stschiff/msmc-tools.git
