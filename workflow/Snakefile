@@ -83,8 +83,10 @@ rule msmc2:
         chrom_multihetsep_files
     output:
         "results/{population}/{population}.msmc2"
-    threads: 1
+    threads: 8
+    resources:
+        mem_mb=50000
     log:
         "logs/msmc2/{population}.log"
     shell:
-        "msmc2 -t 3 -r 1.5 -o {output} {input} > {log} 2>&1"
+        "msmc2 -t {threads} -r 1.5 -o {output} {input} > {log} 2>&1"
