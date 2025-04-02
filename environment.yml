@@ -11,3 +11,4 @@ dependencies:
   - bioconda::bcftools
   - genomedk::msmc2
   - bioconda::snakemake-executor-plugin-slurm
+  - conda-forge::ldc=1.28
