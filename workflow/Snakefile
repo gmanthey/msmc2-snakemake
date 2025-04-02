@@ -18,12 +18,27 @@ def get_chromosomes():
 
     return chromosomes
 
-def population_list():
-    return get_populations().keys()
+def cross_populations():
+    populations = get_populations().keys()
+
+    if len(populations) == 1:
+        return f"results/{populations[0]}/{populations[0]}.msmc2"
+
+    combined_files = []
+
+    for i, pop1 in enumerate(populations[:-1]):
+        for j, pop2 in enumerate(populations[i+1:]):
+            combined_files.append(f"results/cross/{pop1}-{pop2}.combined.msmc2")
+
+    return combined_files
 
 rule all:
     input:
-        expand("results/{pop}/{pop}.msmc2", pop=population_list())
+        cross_populations    
+
+rule within_population:
+    input:
+        expand("results/{pop}/{pop}.msmc2", pop=get_populations().keys())
 
 def chrom_depth_mask_output():
     chromosomes = get_chromosomes()
@@ -64,11 +79,14 @@ rule ind_vcf:
             shell(f"bcftools index {output[i]}")
 
 def ind_vcf_mask_input(wildcards):
-    population = wildcards["population"]
     chromosome = wildcards["chromosome"]
-    individuals = get_populations()[population]
-    vcf_files = expand("results/{population}/{chromosome}/individuals/{individual}.vcf.gz", population=population, chromosome=chromosome, individual=individuals)
-    mask_files = expand("results/{population}/{chromosome}/individuals/{individual}.depth_mask.bed.gz", population=population, chromosome=chromosome, individual=individuals)
+    individuals = get_populations()
+    vcf_files = []
+    mask_files = []
+    for pop in sorted(individuals.keys()):
+        for ind in individuals[pop]:
+            vcf_files.append(f"results/{pop}/{chromosome}/individuals/{ind}.vcf.gz")
+            mask_files.append(f"results/{pop}/{chromosome}/individuals/{ind}.depth_mask.bed.gz")
 
     return {"vcf": vcf_files, "mask": mask_files}
 
@@ -76,7 +94,7 @@ rule multihetsep:
     input:
         unpack(ind_vcf_mask_input)
     output:
-        "results/{population}/{chromosome}/{population}.multihetsep.txt"
+        "results/chromosomes/{chromosome}.multihetsep.txt"
     threads: 1
     log:
         "logs/multihetsep/{population}/{chromosome}.log"
@@ -84,21 +102,74 @@ rule multihetsep:
         mask_args = " ".join(["--mask " + mask for mask in input["mask"]])
         shell("msmc-tools/generate_multihetsep.py --chr {wildcards[chromosome]} " + mask_args + " {input[vcf]} > {output} 2> {log}")
 
-def chrom_multihetsep_files(wildcards):
-    chromosomes = get_chromosomes()
-    population = wildcards["population"]
-
-    return expand("results/{population}/{chromosome}/{population}.multihetsep.txt", population=population, chromosome=chromosomes)
+def get_indices_pop(wildcards):
+    population = wildcards['population']
+    start_index = 0
+    populations = get_populations()
+    for pop in sorted(populations.keys()):
+        if pop == population:
+            return ','.join(range(start_index, start_index + len(populations[pop])))
+        start_index += len(populations[pop])
 
 rule msmc2:
     input:
-        chrom_multihetsep_files
+        expand("results/chromosomes/{chromosome}.multihetsep.txt", chromosome=get_chromosomes())
     output:
         "results/{population}/{population}.msmc2"
+    params:
+        indices=get_indices_pop
     threads: 8
     resources:
         mem_mb=400000
     log:
         "logs/msmc2/{population}.log"
     shell:
-        "msmc2 -t {threads} -r 1.5 -o {output} {input} > {log} 2>&1"
+        "msmc2 -t {threads} -r 1.5 -I {params.indices} -o {output} {input} > {log} 2>&1"
+
+
+def get_indices_pop(wildcards):
+    pop1 = wildcards['population1']
+    pop2 = wildcards['population2']
+    start_index = 0
+    populations = get_populations()
+    for pop in sorted(populations.keys()):
+        if pop == pop1:
+            ind1 = list(range(start_index, start_index + len(populations[pop])))
+        if pop == pop2:
+            ind2 = list(range(start_index, start_index + len(populations[pop])))
+        start_index += len(populations[pop])
+
+    indices = []
+    for i in ind1:
+        for j in ind2:
+            indices.append(f'{i}-{j}')
+
+    return ','.join(indices)
+
+rule msmc2_cross_coalescence:
+    input:
+        expand("results/chromosomes/{chromosome}.multihetsep.txt", chromosome=get_chromosomes())
+    output:
+        "results/cross/{population1}-{population2}.msmc2"
+    params:
+        indices=get_indices_cross
+    threads: 8
+    resources:
+        mem_mb=50000
+    log:
+        "logs/msmc2-cross/{population1}-{population2}.log"
+    shell:
+        "msmc2 -t {threads} -r 1.5 -I {params.indices} -o {output} {input} > {log} 2>&1"
+
+rule combine_within_cross:
+    input:
+        "results/cross/{population1}-{population2}.msmc2",
+        "results/{population1}/{population1}.msmc2",
+        "results/{population2}/{population2}.msmc2"
+    output:
+        "results/cross/{population1}-{population2}.combined.msmc2"
+    threads: 1
+    log: 
+        "logs/combine/{population1}-{population2}.log"
+    shell:
+        "msmc-tools/combineCrossCoal.py {input} > {output} 2> {log}"
