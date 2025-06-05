@@ -22,7 +22,7 @@ def cross_populations():
     populations = list(get_populations().keys())
 
     if len(populations) == 1:
-        return f"results/{populations[0]}/{populations[0]}.msmc2"
+        return f"results/{populations[0]}/{populations[0]}.msmc2.final.txt"
 
     combined_files = []
 
@@ -47,7 +47,8 @@ def chrom_depth_mask_output():
 rule ind_depth_mask:
     input:
         expand("{bam_dir}/{{individual}}{bam_extension}.bam", bam_dir=config["bam_dir"], bam_extension=config["final_bam_extension"]),
-        config["genome"]
+        config["genome"],
+        config["populations_file"]
     output:
         "results/{population}/{chromosome}/individuals/{individual}.depth_mask.bed.gz"
     threads: 1
@@ -64,7 +65,8 @@ def chrom_vcf_output():
 
 rule ind_vcf:
     input:
-        config["vcf_file"]
+        config["vcf_file"],
+        config["populations_file"]
     output:
         chrom_vcf_output()
     threads: 1
@@ -73,7 +75,7 @@ rule ind_vcf:
     run:
         chromosomes = get_chromosomes()
         for i, chromosome in enumerate(chromosomes):
-            shell(f"bcftools view -s {{wildcards[individual]}} --min-ac 1 -Oz -o {output[i]} {{input}} {chromosome}")
+            shell(f"bcftools view -s {{wildcards[individual]}} --min-ac 1 -Oz -o {output[i]} {{input[0]}} {chromosome}")
             shell(f"bcftools index {output[i]}")
 
 def ind_vcf_mask_input(wildcards):
@@ -98,6 +100,8 @@ rule multihetsep:
         "logs/multihetsep/{chromosome}.log"
     run:
         mask_args = " ".join(["--mask " + mask for mask in input["mask"]])
+        if len(input['vcf']) == 1:
+            mask_args += " --as_phased"
         shell("msmc-tools/generate_multihetsep.py --chr {wildcards[chromosome]} " + mask_args + " {input[vcf]} > {output} 2> {log}")
 
 def get_indices_pop(wildcards):
