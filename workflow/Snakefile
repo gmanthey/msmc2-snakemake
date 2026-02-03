@@ -38,7 +38,7 @@ rule all:
 
 rule within_population:
     input:
-        expand("results/{pop}/{pop}.msmc2", pop=get_populations().keys())
+        expand("results/{pop}/{pop}.msmc2.final.txt", pop=get_populations().keys())
 
 def chrom_depth_mask_output():
     chromosomes = get_chromosomes()
