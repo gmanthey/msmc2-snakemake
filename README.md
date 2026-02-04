@@ -8,7 +8,7 @@
 
     ```bash
     git clone https://github.com/gmanthey/msmc2-snakemake.git
-    cd variant-calling
+    cd msmc2-snakemake
     git submodule init
     git submodule update
     ```
