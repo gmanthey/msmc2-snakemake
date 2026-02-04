@@ -13,8 +13,7 @@
     git submodule update
     ```
 
-3. Create a new environment from the environment specs file:
-4. 
+3. Create a new environment from the environment specs file: 
     ```bash
     conda env create -f environment.yml
     ```
